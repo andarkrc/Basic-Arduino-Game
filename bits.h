@@ -1,5 +1,5 @@
-#ifndef __BITS_H__
-#define __BITS_H__
+#ifndef __BITS__H__
+#define __BITS__H__
 
 #define SETB(container, bit) (container |= (1 << (bit)))
 #define CLEARB(container, bit) (container &= ~(1 << (bit)))
