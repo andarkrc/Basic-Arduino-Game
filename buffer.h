@@ -5,7 +5,7 @@
 
 #include "geometry.h"
 
-#define MAX_BUFFER_SIZE 100
+#define MAX_BUFFER_SIZE 60
 
 typedef struct {
 	int8_t write_idx;

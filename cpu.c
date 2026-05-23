@@ -10,9 +10,18 @@
 #include "timer.h"
 #include "buffer.h"
 
+typedef struct {
+	Vec3 pos;
+	int8_t idx;
+} Object;
+
+#define MAX_OBJECTS 5
+
 volatile uint8_t gpu_found = 0;
 
 volatile uint32_t milis = 0;
+
+Object objects[MAX_OBJECTS];
 
 volatile int8_t buttons[16] = {0};
 
@@ -23,6 +32,8 @@ volatile uint8_t active_row = 0;
 volatile uint8_t scene_sent = 0;
 
 volatile uint8_t gpu_buffer_size = 0;
+
+volatile int8_t total_faces_sent = 0;
 
 #define BUTTON_COOLDOWN 50
 
@@ -200,56 +211,65 @@ void send_dummy_face_to_gpu()
 	send_face_to_gpu(-1, -1, (Vec3){0.f, 0.f, 0.f}, (Vec3){0.f, 0.f, 0.f}, (Vec3){0.f, 0.f, 0.f}, 0x0000);
 }
 
-void send_scene_data(void)
+void send_cube(int8_t obj_idx)
 {
 	float s = 10.f;
 
-	send_dummy_face_to_gpu();
-
 	// Fata din fata (z = +s)
-	send_face_to_gpu(0,  0, (Vec3){-s, -s,  s}, (Vec3){ s, -s,  s}, (Vec3){ s,  s,  s}, 0xF800);
-
-	send_face_to_gpu(1,  0, (Vec3){-s, -s,  s}, (Vec3){ s,  s,  s}, (Vec3){-s,  s,  s}, 0xF800);
+	send_face_to_gpu(total_faces_sent + 0, obj_idx, (Vec3){-s, -s,  s}, (Vec3){ s, -s,  s}, (Vec3){ s,  s,  s}, 0xF800);
+	send_face_to_gpu(total_faces_sent + 1, obj_idx, (Vec3){-s, -s,  s}, (Vec3){ s,  s,  s}, (Vec3){-s,  s,  s}, 0xF800);
 
 	// Fata din spate (z = -s)
-	send_face_to_gpu(2,  0, (Vec3){ s, -s, -s}, (Vec3){-s, -s, -s}, (Vec3){-s,  s, -s}, 0x07E0);
-
-	send_face_to_gpu(3,  0, (Vec3){ s, -s, -s}, (Vec3){-s,  s, -s}, (Vec3){ s,  s, -s}, 0x07E0);
+	send_face_to_gpu(total_faces_sent + 2, obj_idx, (Vec3){ s, -s, -s}, (Vec3){-s, -s, -s}, (Vec3){-s,  s, -s}, 0x07E0);
+	send_face_to_gpu(total_faces_sent + 3, obj_idx, (Vec3){ s, -s, -s}, (Vec3){-s,  s, -s}, (Vec3){ s,  s, -s}, 0x07E0);
 
 	// Fata stanga (x = -s)
-	send_face_to_gpu(4,  0, (Vec3){-s, -s, -s}, (Vec3){-s, -s,  s}, (Vec3){-s,  s,  s}, 0x001F);
-
-	send_face_to_gpu(5,  0, (Vec3){-s, -s, -s}, (Vec3){-s,  s,  s}, (Vec3){-s,  s, -s}, 0x001F);
-
+	send_face_to_gpu(total_faces_sent + 4, obj_idx, (Vec3){-s, -s, -s}, (Vec3){-s, -s,  s}, (Vec3){-s,  s,  s}, 0x001F);
+	send_face_to_gpu(total_faces_sent + 5, obj_idx, (Vec3){-s, -s, -s}, (Vec3){-s,  s,  s}, (Vec3){-s,  s, -s}, 0x001F);
 
 	// Fata dreapta (x = +s)
-	send_face_to_gpu(6,  0, (Vec3){ s, -s,  s}, (Vec3){ s, -s, -s}, (Vec3){ s,  s, -s}, 0xFFE0);
-
-	send_face_to_gpu(7,  0, (Vec3){ s, -s,  s}, (Vec3){ s,  s, -s}, (Vec3){ s,  s,  s}, 0xFFE0);
-
+	send_face_to_gpu(total_faces_sent + 6, obj_idx, (Vec3){ s, -s,  s}, (Vec3){ s, -s, -s}, (Vec3){ s,  s, -s}, 0xFFE0);
+	send_face_to_gpu(total_faces_sent + 7, obj_idx, (Vec3){ s, -s,  s}, (Vec3){ s,  s, -s}, (Vec3){ s,  s,  s}, 0xFFE0);
 
 	// Fata de sus (y = +s)
-	send_face_to_gpu(8,  0, (Vec3){-s,  s,  s}, (Vec3){ s,  s,  s}, (Vec3){ s,  s, -s}, 0xF81F);
-
-	send_face_to_gpu(9,  0, (Vec3){-s,  s,  s}, (Vec3){ s,  s, -s}, (Vec3){-s,  s, -s}, 0xF81F);
+	send_face_to_gpu(total_faces_sent + 8, obj_idx, (Vec3){-s,  s,  s}, (Vec3){ s,  s,  s}, (Vec3){ s,  s, -s}, 0xF81F);
+	send_face_to_gpu(total_faces_sent + 9, obj_idx, (Vec3){-s,  s,  s}, (Vec3){ s,  s, -s}, (Vec3){-s,  s, -s}, 0xF81F);
 
 	// Fata de jos (y = -s)
-	send_face_to_gpu(10, 0, (Vec3){-s, -s, -s}, (Vec3){ s, -s, -s}, (Vec3){ s, -s,  s}, 0x07FF);
+	send_face_to_gpu(total_faces_sent + 10, obj_idx, (Vec3){-s, -s, -s}, (Vec3){ s, -s, -s}, (Vec3){ s, -s,  s}, 0x07FF);
+	send_face_to_gpu(total_faces_sent + 11, obj_idx, (Vec3){-s, -s, -s}, (Vec3){ s, -s,  s}, (Vec3){-s, -s,  s}, 0x07FF);
 
-	send_face_to_gpu(11, 0, (Vec3){-s, -s, -s}, (Vec3){ s, -s,  s}, (Vec3){-s, -s,  s}, 0x07FF);
+	total_faces_sent += 12;
+}
 
-	scene_sent = 1;
+void send_tetrahedron(int8_t obj_idx)
+{
+    float s = 10.f;
+
+    Vec3 top   = { 0.f,       s,        0.f      };
+    Vec3 front = { 0.f,      -s * 0.333f, s * 0.943f};
+    Vec3 left  = {-s * 0.816f,-s * 0.333f,-s * 0.471f};
+    Vec3 right = { s * 0.816f,-s * 0.333f,-s * 0.471f};
+
+    // Fata din fata
+    send_face_to_gpu(total_faces_sent + 0, obj_idx, top,   front, right, 0xF800);
+    // Fata stanga
+    send_face_to_gpu(total_faces_sent + 1, obj_idx, top,   left,  front, 0x07E0);
+    // Fata dreapta
+    send_face_to_gpu(total_faces_sent + 2, obj_idx, top,   right, left,  0x001F);
+    // Baza
+    send_face_to_gpu(total_faces_sent + 3, obj_idx, front, left,  right, 0xFFE0);
+
+    total_faces_sent += 4;
 }
 
 // NON BLOCKING
-void rotate_object(int8_t obj_idx, int8_t rx, int8_t ry, int8_t rz, float ox, float oy, float oz)
+void rotate_object(Object *obj, int8_t rx, int8_t ry, int8_t rz)
 {
 	if (gpu_buffer_size < MAX_BUFFER_SIZE - 17) {
 		uart_transmit_byte(ROTATE_OBJECT);
-		uart_transmit_byte(obj_idx);
-		uart_transmit_float(ox);
-		uart_transmit_float(oy);
-		uart_transmit_float(oz);
+		uart_transmit_byte(obj->idx);
+		uart_transmit_vec3(obj->pos);
 		uart_transmit_byte(rx);
 		uart_transmit_byte(ry);
 		uart_transmit_byte(rz);
@@ -257,16 +277,36 @@ void rotate_object(int8_t obj_idx, int8_t rx, int8_t ry, int8_t rz, float ox, fl
 	}
 }
 
-void move_object(int8_t obj_idx, int8_t dx, int8_t dy, int8_t dz)
+void move_object(Object *obj, int8_t dx, int8_t dy, int8_t dz)
 {
 	if (gpu_buffer_size < MAX_BUFFER_SIZE - 5) {
 		uart_transmit_byte(MOVE_OBJECT);
-		uart_transmit_byte(obj_idx);
+		uart_transmit_byte(obj->idx);
 		uart_transmit_byte(dx);
 		uart_transmit_byte(dy);
 		uart_transmit_byte(dz);
 		gpu_buffer_size += 5;
+
+		obj->pos.x += (float)dx;
+		obj->pos.y += (float)dy;
+		obj->pos.z += (float)dz;
 	}
+}
+
+void move_object_forced(Object *obj, int8_t dx, int8_t dy, int8_t dz)
+{
+	while (gpu_buffer_size >= MAX_BUFFER_SIZE - 5);
+
+	uart_transmit_byte(MOVE_OBJECT);
+	uart_transmit_byte(obj->idx);
+	uart_transmit_byte(dx);
+	uart_transmit_byte(dy);
+	uart_transmit_byte(dz);
+	gpu_buffer_size += 5;
+
+	obj->pos.x += (float)dx;
+	obj->pos.y += (float)dy;
+	obj->pos.z += (float)dz;
 }
 
 // NON BLOCKING
@@ -311,6 +351,25 @@ void handle_camera_rotation(void)
 		buttons[BA] = 0;
 		buttons[BC] = 0;
 	}
+}
+
+void send_scene_data(void)
+{
+	send_cube(0);
+
+	send_cube(1);
+	move_object_forced(&objects[1], 100, 0, 0);
+
+	send_tetrahedron(2);
+	move_object_forced(&objects[2], -100, 0, 0);
+
+	scene_sent = 1;
+}
+
+void init_object(Object *obj, int8_t idx)
+{
+	obj->pos = (Vec3){0.f, 0.f, 0.f};
+	obj->idx = idx;
 }
 
 void handle_input(void)
@@ -380,18 +439,36 @@ int main()
 	}
 	CLEARB(PORTB, PB5);
 
+	for (int8_t i = 0; i < MAX_OBJECTS; i++) init_object(&objects[i], i);
+
+
 	uint16_t colors[] = {0xF800, 0xA321, 0x00F8, 0xABCD, 0x0065, 0x6767};
 
 	uint8_t i = 0;
 
 	uint32_t last_rotation = 0;
 
+	uint32_t last_movement = 100;
+
+	int8_t movement_direction = 1;
+
+	int8_t dynamic_scene = 1;
+
 	while (1) {
 		handle_input();
 		if (scene_sent) {
-			if (milis - last_rotation >= 300 && 1) {
-				rotate_object(0, 0, 15, 0, 0.f, 0.f, 0.f);
+			if (milis - last_rotation >= 300 && dynamic_scene) {
+				rotate_object(&objects[0], 0, 15, 0);
 				last_rotation = milis;
+			}
+
+			if (milis - last_movement >= 500 && dynamic_scene) {
+				move_object(&objects[1], 0, movement_direction, 0);
+
+				if (objects[1].pos.y < -10 || objects[1].pos.y > 10) {
+					movement_direction = -movement_direction;
+				}
+				last_movement = 0;
 			}
 		}
 		//_delay_ms(10);
