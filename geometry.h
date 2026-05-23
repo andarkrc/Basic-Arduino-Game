@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <math.h>
 
-typedef struct {
+typedef struct __attribute__((packed)) {
 	int16_t x;
 	int16_t y;
 } ScreenPoint;
@@ -15,7 +15,7 @@ typedef struct __attribute__((packed)) {
 	float z;
 } Vec3;
 
-typedef struct __attribute__((packed)){
+typedef struct __attribute__((packed)) {
     Vec3 pos;
     Vec3 forward;
     Vec3 up;

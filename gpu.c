@@ -19,7 +19,7 @@ typedef struct __attribute__((packed)) {
 	int8_t obj_idx;
 } Face;
 
-#define MAX_FACES 35
+#define MAX_FACES 34
 
 Buffer command_buffer;
 
@@ -47,6 +47,7 @@ void process_command(uint8_t command)
 	uint32_t timeout = 50000;
 	int8_t idx;
 	uint8_t skip = 0;
+	uint16_t color = 0;
 	float dx, dy, dz;
 	Vec3 opos;
 	switch (command) {
@@ -65,7 +66,7 @@ void process_command(uint8_t command)
 			break;
 
 		case NEW_FACE:
-			timeout = 100000;
+			timeout = 1000000;
 			while (command_buffer.size < 40 && --timeout);
 			if (!timeout) {
 				buffer_skip_bytes(&command_buffer, command_buffer.size);
@@ -114,7 +115,7 @@ void process_command(uint8_t command)
 			break;
 
 		case ROTATE_OBJECT:
-			timeout = 100000;
+			timeout = 1000000;
 			while (command_buffer.size < 16 && --timeout);
 			if (!timeout) {
 				buffer_skip_bytes(&command_buffer, command_buffer.size);
@@ -190,6 +191,43 @@ void process_command(uint8_t command)
 			uart_transmit_byte(command_buffer.size);
 			break;
 
+		case CHANGE_FACE_COLOR:
+			while (command_buffer.size < 3 && --timeout);
+			if (!timeout) {
+				buffer_skip_bytes(&command_buffer, command_buffer.size);
+				break;
+			}
+			idx = buffer_read_byte(&command_buffer);
+			color = buffer_read_word(&command_buffer);
+			for (int8_t i = 0; i < face_no; i++) {
+				if (faces[i].idx == idx) {
+					faces[i].color = color;
+					break;
+				}
+			}
+			scene_changed = 1;
+			break;
+
+		case DELETE_OBJECT:
+			while (command_buffer.size < 1 && --timeout);
+			if (!timeout) {
+				buffer_skip_bytes(&command_buffer, command_buffer.size);
+				break;
+			}
+			idx = buffer_read_byte(&command_buffer);
+			DELETE_ONE_FACE:
+			for (int8_t i = 0; i < face_no; i++) {
+				if (faces[i].obj_idx == idx) {
+					for (int8_t k = i; k < face_no - 1; k++) {
+						faces[i] = faces[i + 1];
+					}
+					face_no--;
+					goto DELETE_ONE_FACE;
+				}
+			}
+			scene_changed = 1;
+			break;
+
 			// NO IDEA WHAT TRASH IS IN THE BUFFER, JUST FLUSH IT ALL OUT. SORRY NOT SORRY
 		default:
 			buffer_skip_bytes(&command_buffer, command_buffer.size);
@@ -236,7 +274,6 @@ int main()
 		display_color = 0x0000;
 		int8_t to_process = 10;
 		while (command_buffer.size != 0 && --to_process) {
-			//number_to_display = buffer_peek_byte(&command_buffer);
 			process_command(buffer_read_byte(&command_buffer));
 		}
 
@@ -270,6 +307,7 @@ int main()
 			scene_changed = 0;
 		}
 
+		draw_number(number_to_display);
 		
 	}
 	
