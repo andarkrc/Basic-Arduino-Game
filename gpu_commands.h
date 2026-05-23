@@ -22,4 +22,8 @@
 
 #define READY_FOR_FACE 11
 
+#define GPU_BUFFER_SIZE 12
+
+#define REQUEST_BUFFER_SIZE 13
+
 #endif

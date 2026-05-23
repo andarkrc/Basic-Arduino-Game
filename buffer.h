@@ -5,12 +5,12 @@
 
 #include "geometry.h"
 
-#define MAX_BUFFER_SIZE 45
+#define MAX_BUFFER_SIZE 100
 
 typedef struct {
 	int8_t write_idx;
 	int8_t read_idx;
-	uint8_t size;
+	volatile uint8_t size;
 	uint8_t data[MAX_BUFFER_SIZE];
 } Buffer;
 

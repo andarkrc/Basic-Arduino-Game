@@ -8,6 +8,7 @@
 #include "gpu_commands.h"
 #include "geometry.h"
 #include "timer.h"
+#include "buffer.h"
 
 volatile uint8_t gpu_found = 0;
 
@@ -19,9 +20,9 @@ volatile uint32_t buttons_last[16] = {0};
 
 volatile uint8_t active_row = 0;
 
-volatile uint8_t ready_for_face = 1;
-
 volatile uint8_t scene_sent = 0;
+
+volatile uint8_t gpu_buffer_size = 0;
 
 #define BUTTON_COOLDOWN 50
 
@@ -121,11 +122,11 @@ void reset_buttons(void)
 
 ISR (USART_RX_vect)
 {
-	uint8_t resp = uart_receive_byte();
+	uint8_t resp = UDR0;
 	if (resp == HELLO_BACK) {
 		gpu_found = 1;
-	} else if (resp == READY_FOR_FACE) {
-		ready_for_face = 1;
+	} else if (resp == GPU_BUFFER_SIZE) {
+		gpu_buffer_size = uart_receive_byte();
 	}
 }
 
@@ -134,6 +135,11 @@ ISR (TIMER0_COMPA_vect)
 	milis++;
 	if (milis == 0) {
 		reset_button_cooldowns();
+	}
+	if (milis % 2000 == 0 && gpu_found) {
+		uart_transmit_byte(REQUEST_BUFFER_SIZE);
+		// once every two seconds we should ask for the buffer size to know if we can send more data.
+		gpu_buffer_size += 1;
 	}
 }
 
@@ -174,9 +180,10 @@ ISR (PCINT2_vect)
 	}	
 }
 
+// BLOCKING
 void send_face_to_gpu(int8_t idx, int8_t obj_idx, Vec3 v1, Vec3 v2, Vec3 v3, uint16_t color)
 {
-	while(!ready_for_face);
+	while(gpu_buffer_size >= MAX_BUFFER_SIZE - 41);
 	uart_transmit_byte(NEW_FACE);
 	uart_transmit_byte(idx);
 	uart_transmit_vec3(v1);
@@ -184,21 +191,13 @@ void send_face_to_gpu(int8_t idx, int8_t obj_idx, Vec3 v1, Vec3 v2, Vec3 v3, uin
 	uart_transmit_vec3(v3);
 	uart_transmit_word(color);
 	uart_transmit_byte(obj_idx);
-	ready_for_face = 0;
+	gpu_buffer_size += 41;
 }
 
 void send_dummy_face_to_gpu()
 {
-	// intentionally empty so we don't lose actual face info
-	while(!ready_for_face);
-	uart_transmit_byte(NEW_FACE);
-	uart_transmit_byte(-1);
-	uart_transmit_vec3((Vec3){0.f, 0.f, 0.f});
-	uart_transmit_vec3((Vec3){0.f, 0.f, 0.f});
-	uart_transmit_vec3((Vec3){0.f, 0.f, 0.f});
-	uart_transmit_word(0x0000);
-	uart_transmit_byte(-1);
-	ready_for_face = 0;
+	// send face id as -1
+	send_face_to_gpu(-1, -1, (Vec3){0.f, 0.f, 0.f}, (Vec3){0.f, 0.f, 0.f}, (Vec3){0.f, 0.f, 0.f}, 0x0000);
 }
 
 void send_scene_data(void)
@@ -242,13 +241,76 @@ void send_scene_data(void)
 	scene_sent = 1;
 }
 
-void rotate_object(int8_t obj_idx, int8_t rx, int8_t ry, int8_t rz)
+// NON BLOCKING
+void rotate_object(int8_t obj_idx, int8_t rx, int8_t ry, int8_t rz, float ox, float oy, float oz)
 {
-	uart_transmit_byte(ROTATE_OBJECT);
-	uart_transmit_byte(obj_idx);
-	uart_transmit_byte(rx);
-	uart_transmit_byte(ry);
-	uart_transmit_byte(rz);
+	if (gpu_buffer_size < MAX_BUFFER_SIZE - 17) {
+		uart_transmit_byte(ROTATE_OBJECT);
+		uart_transmit_byte(obj_idx);
+		uart_transmit_float(ox);
+		uart_transmit_float(oy);
+		uart_transmit_float(oz);
+		uart_transmit_byte(rx);
+		uart_transmit_byte(ry);
+		uart_transmit_byte(rz);
+		gpu_buffer_size += 17;
+	}
+}
+
+void move_object(int8_t obj_idx, int8_t dx, int8_t dy, int8_t dz)
+{
+	if (gpu_buffer_size < MAX_BUFFER_SIZE - 5) {
+		uart_transmit_byte(MOVE_OBJECT);
+		uart_transmit_byte(obj_idx);
+		uart_transmit_byte(dx);
+		uart_transmit_byte(dy);
+		uart_transmit_byte(dz);
+		gpu_buffer_size += 5;
+	}
+}
+
+// NON BLOCKING
+void handle_camera_movement(void)
+{
+	int8_t inputx = (buttons[B7] - buttons[B9]) * 8;
+	int8_t inputz = (buttons[B0] - buttons[B8]) * 8;
+	int8_t inputy = (buttons[BSTAR] - buttons[BHASH]) * 8;
+	if (inputx || inputy || inputz) {
+		if (gpu_buffer_size < MAX_BUFFER_SIZE - 4) {
+			uart_transmit_byte(MOVE_CAMERA);
+			uart_transmit_byte(inputx);
+			uart_transmit_byte(inputz);
+			uart_transmit_byte(inputy);
+			gpu_buffer_size += 4;
+		}
+
+		buttons[B9] = 0;
+		buttons[B7] = 0;
+		buttons[B0] = 0;
+		buttons[B8] = 0;
+		buttons[BSTAR] = 0;
+		buttons[BHASH] = 0;
+	}
+}
+
+void handle_camera_rotation(void)
+{
+	int8_t inputx = (buttons[B3] - buttons[B1]);
+	int8_t inputy = (buttons[BC] - buttons[BA]);
+
+	if (inputx || inputy) {
+		if (gpu_buffer_size < MAX_BUFFER_SIZE - 3) {
+			uart_transmit_byte(ROTATE_CAMERA);
+			uart_transmit_byte(inputy);
+			uart_transmit_byte(inputx);
+			gpu_buffer_size += 3;
+		}
+
+		buttons[B3] = 0;
+		buttons[B1] = 0;
+		buttons[BA] = 0;
+		buttons[BC] = 0;
+	}
 }
 
 void handle_input(void)
@@ -286,39 +348,14 @@ void handle_input(void)
 			CLEARB(PORTD, PD6);
 			break;
 	}
-	int8_t inputx = (buttons[B9] - buttons[B7]) * 8;
-	int8_t inputz = (buttons[B0] - buttons[B8]) * 8;
-	int8_t inputy = (buttons[BSTAR] - buttons[BHASH]) * 8;
-	if (inputx || inputy || inputz) {
-		uart_transmit_byte(MOVE_CAMERA);
-		uart_transmit_byte(inputx);
-		uart_transmit_byte(inputy);
-		uart_transmit_byte(inputz);
-
-		buttons[B9] = 0;
-		buttons[B7] = 0;
-		buttons[B0] = 0;
-		buttons[B8] = 0;
-		buttons[BSTAR] = 0;
-		buttons[BHASH] = 0;
-	}
-
-	inputx = (buttons[B3] - buttons[B1]);
-	inputy = (buttons[BA] - buttons[BC]);
-
-	if (inputx || inputy) {
-		uart_transmit_byte(ROTATE_CAMERA);
-		uart_transmit_byte(inputy);
-		uart_transmit_byte(inputx);
-
-		buttons[B3] = 0;
-		buttons[B1] = 0;
-		buttons[BA] = 0;
-		buttons[BC] = 0;
-	}
+	handle_camera_movement();
+	handle_camera_rotation();
 
 	if (buttons[B2]) {
-		uart_transmit_byte(RESET_CAMERA);
+		if (gpu_buffer_size < MAX_BUFFER_SIZE - 1) {
+			uart_transmit_byte(RESET_CAMERA);
+			gpu_buffer_size += 1;
+		}
 		buttons[B2] = 0;
 	}
 
@@ -333,7 +370,7 @@ int main()
 	SETB(DDRB, PB5);
 	SETB(PORTB, PB5);
 	init_buttons();
-	uart_init(9600);
+	uart_init(115200);
 	init_interrupts();
 	timer0_init();
 
@@ -347,11 +384,14 @@ int main()
 
 	uint8_t i = 0;
 
+	uint32_t last_rotation = 0;
+
 	while (1) {
 		handle_input();
-		if (scene_sent && 0) {
-			if (milis % 500 == 0) {
-				rotate_object(0, 0, 15, 0);
+		if (scene_sent) {
+			if (milis - last_rotation >= 1000 && 0) {
+				rotate_object(0, 0, 15, 0, 0.f, 0.f, 0.f);
+				last_rotation = milis;
 			}
 		}
 		//_delay_ms(10);

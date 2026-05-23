@@ -2,7 +2,7 @@
 
 #define TO_UBRR(baud_rate) ((F_CPU / (16UL * (baud_rate))) - 1)
 
-void uart_init(uint16_t baud_rate)
+void uart_init(uint32_t baud_rate)
 {
 	baud_rate = TO_UBRR(baud_rate);
 

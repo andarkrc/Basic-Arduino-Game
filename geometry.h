@@ -15,7 +15,7 @@ typedef struct __attribute__((packed)) {
 	float z;
 } Vec3;
 
-typedef struct {
+typedef struct __attribute__((packed)){
     Vec3 pos;
     Vec3 forward;
     Vec3 up;
@@ -39,5 +39,9 @@ float to_deg(float rad);
 float to_rad(float deg);
 
 void camera_rotate(Camera *cam, float dyaw, float dpitch);
+
+Vec3 vec3_sub(Vec3 a, Vec3 b);
+
+Vec3 vec3_add(Vec3 a, Vec3 b);
 
 #endif

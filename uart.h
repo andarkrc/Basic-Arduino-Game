@@ -8,7 +8,7 @@
 
 #include "geometry.h"
 
-void uart_init(uint16_t baud_rate);
+void uart_init(uint32_t baud_rate);
 
 void uart_transmit_byte(uint8_t data);
 

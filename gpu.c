@@ -19,7 +19,7 @@ typedef struct __attribute__((packed)) {
 	int8_t obj_idx;
 } Face;
 
-#define MAX_FACES 40
+#define MAX_FACES 35
 
 Buffer command_buffer;
 
@@ -32,6 +32,8 @@ volatile Face faces[MAX_FACES];
 volatile uint16_t display_color = 0x0000;
 
 volatile uint8_t number_to_display = 0;
+
+volatile uint8_t scene_changed = 1;
 
 void init_interrupts(void)
 {
@@ -57,14 +59,14 @@ void process_command(uint8_t command)
 				break;
 			}
 			display_color = buffer_read_word(&command_buffer);
+			scene_changed = 1;
 			break;
 
 		case NEW_FACE:
-			timeout = 300000;
+			timeout = 100000;
 			while (command_buffer.size < 40 && --timeout);
 			if (!timeout) {
 				buffer_skip_bytes(&command_buffer, command_buffer.size);
-				number_to_display = command_buffer.size;
 				break;
 			}
 			if (face_no >= MAX_FACES) {
@@ -90,7 +92,7 @@ void process_command(uint8_t command)
 			faces[face_no].color = buffer_read_word(&command_buffer);
 			faces[face_no].obj_idx = buffer_read_byte(&command_buffer);
 			face_no++;
-			uart_transmit_byte(READY_FOR_FACE);
+			scene_changed = 1;
 			break;
 
 		case MOVE_CAMERA:
@@ -99,29 +101,43 @@ void process_command(uint8_t command)
 				buffer_skip_bytes(&command_buffer, command_buffer.size);
 				break;
 			}
-			cam.pos.x += (float)(int8_t)buffer_read_byte(&command_buffer);
-			cam.pos.y += (float)(int8_t)buffer_read_byte(&command_buffer);
-			cam.pos.z += (float)(int8_t)buffer_read_byte(&command_buffer);
+			float dx = (float)(int8_t)buffer_read_byte(&command_buffer);
+			float dz = (float)(int8_t)buffer_read_byte(&command_buffer);
+			float dy = (float)(int8_t)buffer_read_byte(&command_buffer);
+			cam.pos.x += cam.right.x * dx + cam.forward.x * dz;
+			//cam.pos.y += cam.right.y * dx + cam.forward.y * dz + dy;
+			cam.pos.z += cam.right.z * dx + cam.forward.z * dz;
+			cam.pos.y += dy;
+			scene_changed = 1;
 			break;
 
 		case ROTATE_OBJECT:{
-			while (command_buffer.size < 4 && --timeout);
+			timeout = 50000;
+			while (command_buffer.size < 16 && --timeout);
 			if (!timeout) {
 				buffer_skip_bytes(&command_buffer, command_buffer.size);
 				break;
 			}
 			int8_t obj_idx = (int8_t)buffer_read_byte(&command_buffer);
+			Vec3 opos = buffer_read_vec3(&command_buffer);
 			float rx = to_rad((float)(int8_t)buffer_read_byte(&command_buffer));
 			float ry = to_rad((float)(int8_t)buffer_read_byte(&command_buffer));
 			float rz = to_rad((float)(int8_t)buffer_read_byte(&command_buffer));
 			for (int8_t i = 0; i < face_no; i++) {
 				if (faces[i].obj_idx == obj_idx) {
+					faces[i].v1 = vec3_sub(faces[i].v1, opos);
+					faces[i].v2 = vec3_sub(faces[i].v2, opos);
+					faces[i].v3 = vec3_sub(faces[i].v3, opos);
 					faces[i].v1 = rotate_xyz(faces[i].v1, rx, ry, rz);
 					faces[i].v2 = rotate_xyz(faces[i].v2, rx, ry, rz);
 					faces[i].v3 = rotate_xyz(faces[i].v3, rx, ry, rz);
+					faces[i].v1 = vec3_add(faces[i].v1, opos);
+					faces[i].v2 = vec3_add(faces[i].v2, opos);
+					faces[i].v3 = vec3_add(faces[i].v3, opos);
 				}
 			}
 			}
+			scene_changed = 1;
 			break;
 
 		case MOVE_OBJECT:{
@@ -148,6 +164,7 @@ void process_command(uint8_t command)
 				}
 			}
 			}
+			scene_changed = 1;
 			break;
 
 		case ROTATE_CAMERA:
@@ -157,6 +174,7 @@ void process_command(uint8_t command)
 				break;
 			}
 			camera_rotate(&cam, (float)(int8_t)buffer_read_byte(&command_buffer) / 4.f, (float)(int8_t)buffer_read_byte(&command_buffer) / 4.f);
+			scene_changed = 1;
 			break;
 
 		case RESET_CAMERA:
@@ -164,14 +182,22 @@ void process_command(uint8_t command)
 			    (Vec3){0, 0, -100},
 			    (Vec3){0, 0,  0}
 			);
+			scene_changed = 1;
+			break;
+
+		case REQUEST_BUFFER_SIZE:
+			uart_transmit_byte(GPU_BUFFER_SIZE);
+			uart_transmit_byte(command_buffer.size);
 			break;
 
 			// NO IDEA WHAT TRASH IS IN THE BUFFER, JUST FLUSH IT ALL OUT. SORRY NOT SORRY
 		default:
-			number_to_display = command;
-			//buffer_skip_bytes(&command_buffer, command_buffer.size);
+			buffer_skip_bytes(&command_buffer, command_buffer.size);
 			break;
 	}
+
+	uart_transmit_byte(GPU_BUFFER_SIZE);
+	uart_transmit_byte(command_buffer.size);
 }
 
 ISR (USART_RX_vect)
@@ -197,7 +223,7 @@ int main()
 
 	buffer_init(&command_buffer);
 
-	uart_init(9600);
+	uart_init(115200);
 	init_interrupts(); // ready to listen for commands.
 	
 
@@ -208,39 +234,43 @@ int main()
 
 	while (1) {
 		display_color = 0x0000;
-		if (command_buffer.size != 0) {
+		int8_t to_process = 10;
+		while (command_buffer.size != 0 && --to_process) {
 			//number_to_display = buffer_peek_byte(&command_buffer);
 			process_command(buffer_read_byte(&command_buffer));
 		}
-		if (command_buffer.size <= 1) {
-			uart_transmit_byte(READY_FOR_FACE);
-		}
-		draw_rectangle((ScreenPoint){0,0}, (ScreenPoint){display_width, display_height}, display_color);
+
+		uart_transmit_byte(GPU_BUFFER_SIZE);
+		uart_transmit_byte(command_buffer.size);
 
 		int8_t local_face_no = face_no;
-
 		// Painter's approach: 2 passes of bubble sort xd
 		// no depth buffer so we try this: sort by avg distance to camera.
 		for (uint8_t pass = 0; pass < 2; pass++) {
-	        for (uint8_t i = 0; i < local_face_no - 1; i++) {
-	            if (face_dist_sq(&faces[i], &cam) < face_dist_sq(&faces[i+1], &cam)) {
-	                Face tmp = faces[i];
-	                faces[i] = faces[i+1];
-	                faces[i+1] = tmp;
-	            }
-	        }
-	    }
-
-		for (uint8_t i = 0; i < local_face_no; i++) {
-			ScreenPoint p1 = project(faces[i].v1, cam);
-			ScreenPoint p2 = project(faces[i].v2, cam);
-			ScreenPoint p3 = project(faces[i].v3, cam);
-
-			draw_triangle(p1, p2, p3, faces[i].color);
+			for (uint8_t i = 0; i < local_face_no - 1; i++) {
+				if (face_dist_sq(&faces[i], &cam) < face_dist_sq(&faces[i+1], &cam)) {
+					Face tmp = faces[i];
+					faces[i] = faces[i+1];
+					faces[i+1] = tmp;
+					scene_changed = 1;
+				}
+			}
 		}
+
+		if (scene_changed) {
+			draw_rectangle((ScreenPoint){0,0}, (ScreenPoint){display_width, display_height}, display_color);
+			for (uint8_t i = 0; i < local_face_no; i++) {
+				ScreenPoint p1 = project(faces[i].v1, cam);
+				ScreenPoint p2 = project(faces[i].v2, cam);
+				ScreenPoint p3 = project(faces[i].v3, cam);
+
+				draw_triangle(p1, p2, p3, faces[i].color);
+			}
+			
+			scene_changed = 0;
+		}
+
 		
-		draw_number(number_to_display);
-		_delay_ms(10);
 	}
 	
 	return 0;
