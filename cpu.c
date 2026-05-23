@@ -389,7 +389,7 @@ int main()
 	while (1) {
 		handle_input();
 		if (scene_sent) {
-			if (milis - last_rotation >= 1000 && 0) {
+			if (milis - last_rotation >= 300 && 1) {
 				rotate_object(0, 0, 15, 0, 0.f, 0.f, 0.f);
 				last_rotation = milis;
 			}

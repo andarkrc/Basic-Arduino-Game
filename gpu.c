@@ -47,6 +47,8 @@ void process_command(uint8_t command)
 	uint32_t timeout = 50000;
 	int8_t idx;
 	uint8_t skip = 0;
+	float dx, dy, dz;
+	Vec3 opos;
 	switch (command) {
 		case HELLO_GPU:
 			uart_transmit_byte(HELLO_BACK);
@@ -101,9 +103,9 @@ void process_command(uint8_t command)
 				buffer_skip_bytes(&command_buffer, command_buffer.size);
 				break;
 			}
-			float dx = (float)(int8_t)buffer_read_byte(&command_buffer);
-			float dz = (float)(int8_t)buffer_read_byte(&command_buffer);
-			float dy = (float)(int8_t)buffer_read_byte(&command_buffer);
+			dx = (float)(int8_t)buffer_read_byte(&command_buffer);
+			dz = (float)(int8_t)buffer_read_byte(&command_buffer);
+			dy = (float)(int8_t)buffer_read_byte(&command_buffer);
 			cam.pos.x += cam.right.x * dx + cam.forward.x * dz;
 			//cam.pos.y += cam.right.y * dx + cam.forward.y * dz + dy;
 			cam.pos.z += cam.right.z * dx + cam.forward.z * dz;
@@ -111,58 +113,56 @@ void process_command(uint8_t command)
 			scene_changed = 1;
 			break;
 
-		case ROTATE_OBJECT:{
-			timeout = 50000;
+		case ROTATE_OBJECT:
+			timeout = 100000;
 			while (command_buffer.size < 16 && --timeout);
 			if (!timeout) {
 				buffer_skip_bytes(&command_buffer, command_buffer.size);
 				break;
 			}
-			int8_t obj_idx = (int8_t)buffer_read_byte(&command_buffer);
-			Vec3 opos = buffer_read_vec3(&command_buffer);
-			float rx = to_rad((float)(int8_t)buffer_read_byte(&command_buffer));
-			float ry = to_rad((float)(int8_t)buffer_read_byte(&command_buffer));
-			float rz = to_rad((float)(int8_t)buffer_read_byte(&command_buffer));
+			idx = (int8_t)buffer_read_byte(&command_buffer);
+			opos = buffer_read_vec3(&command_buffer);
+			dx = to_rad((float)(int8_t)buffer_read_byte(&command_buffer));
+			dy = to_rad((float)(int8_t)buffer_read_byte(&command_buffer));
+			dz = to_rad((float)(int8_t)buffer_read_byte(&command_buffer));
 			for (int8_t i = 0; i < face_no; i++) {
-				if (faces[i].obj_idx == obj_idx) {
+				if (faces[i].obj_idx == idx) {
 					faces[i].v1 = vec3_sub(faces[i].v1, opos);
 					faces[i].v2 = vec3_sub(faces[i].v2, opos);
 					faces[i].v3 = vec3_sub(faces[i].v3, opos);
-					faces[i].v1 = rotate_xyz(faces[i].v1, rx, ry, rz);
-					faces[i].v2 = rotate_xyz(faces[i].v2, rx, ry, rz);
-					faces[i].v3 = rotate_xyz(faces[i].v3, rx, ry, rz);
+					faces[i].v1 = rotate_xyz(faces[i].v1, dx, dy, dz);
+					faces[i].v2 = rotate_xyz(faces[i].v2, dx, dy, dz);
+					faces[i].v3 = rotate_xyz(faces[i].v3, dx, dy, dz);
 					faces[i].v1 = vec3_add(faces[i].v1, opos);
 					faces[i].v2 = vec3_add(faces[i].v2, opos);
 					faces[i].v3 = vec3_add(faces[i].v3, opos);
 				}
 			}
-			}
 			scene_changed = 1;
 			break;
 
-		case MOVE_OBJECT:{
+		case MOVE_OBJECT:
 			while (command_buffer.size < 4 && --timeout);
 			if (!timeout) {
 				buffer_skip_bytes(&command_buffer, command_buffer.size);
 				break;
 			}
-			int8_t obj_idx = (int8_t)buffer_read_byte(&command_buffer);
-			int8_t dx = (int8_t)buffer_read_byte(&command_buffer);
-			int8_t dy = (int8_t)buffer_read_byte(&command_buffer);
-			int8_t dz = (int8_t)buffer_read_byte(&command_buffer);
+			idx = (int8_t)buffer_read_byte(&command_buffer);
+			dx = (float)(int8_t)buffer_read_byte(&command_buffer);
+			dy = (float)(int8_t)buffer_read_byte(&command_buffer);
+			dz = (float)(int8_t)buffer_read_byte(&command_buffer);
 			for (int8_t i = 0; i < face_no; i++) {
-				if (faces[i].obj_idx == obj_idx) {
-					faces[i].v1.x += (float)dx;
-					faces[i].v2.x += (float)dx;
-					faces[i].v3.x += (float)dx;
-					faces[i].v1.y += (float)dy;
-					faces[i].v2.y += (float)dy;
-					faces[i].v3.y += (float)dy;
-					faces[i].v1.z += (float)dz;
-					faces[i].v2.z += (float)dz;
-					faces[i].v3.z += (float)dz;
+				if (faces[i].obj_idx == idx) {
+					faces[i].v1.x += dx;
+					faces[i].v2.x += dx;
+					faces[i].v3.x += dx;
+					faces[i].v1.y += dy;
+					faces[i].v2.y += dy;
+					faces[i].v3.y += dy;
+					faces[i].v1.z += dz;
+					faces[i].v2.z += dz;
+					faces[i].v3.z += dz;
 				}
-			}
 			}
 			scene_changed = 1;
 			break;
